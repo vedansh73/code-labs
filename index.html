@@ -162,14 +162,12 @@
         };
 
         const languageConfig = {
-            python: { mode: "python", judge0Id: 71 },
-            c: { mode: "text/x-csrc", judge0Id: 50 },
-            cpp: { mode: "text/x-c++src", judge0Id: 54 },
-            java: { mode: "text/x-java", judge0Id: 62 },
-            php: { mode: "php", judge0Id: 68 }
+            python: { mode: "python", pistonLang: "python", version: "3.10.0" },
+            c: { mode: "text/x-csrc", pistonLang: "c", version: "10.2.0" },
+            cpp: { mode: "text/x-c++src", pistonLang: "cpp", version: "10.2.0" },
+            java: { mode: "text/x-java", version: "15.0.2" },
+            php: { mode: "php", pistonLang: "php", version: "8.2.3" }
         };
-
-        let pistonRuntimes = {};
 
         // Initialize CodeMirror Editor
         const editor = CodeMirror.fromTextArea(document.getElementById("codeEditor"), {
@@ -179,25 +177,6 @@
         });
 
         editor.setValue(templates.python);
-
-        // Fetch valid Piston versions dynamically on startup
-        async function fetchRuntimes() {
-            try {
-                const res = await fetch("https://emkc.org/api/v2/piston/runtimes");
-                const data = await res.json();
-                data.forEach(item => {
-                    pistonRuntimes[item.language] = item.version;
-                    if (item.aliases) {
-                        item.aliases.forEach(alias => {
-                            pistonRuntimes[alias] = item.version;
-                        });
-                    }
-                });
-            } catch (err) {
-                console.warn("Piston runtime fetch failed, fallback ready.", err);
-            }
-        }
-        fetchRuntimes();
 
         document.getElementById("languageSelect").addEventListener("change", function() {
             const lang = this.value;
@@ -209,76 +188,52 @@
             const outputDiv = document.getElementById("output");
             const statusBadge = document.getElementById("statusBadge");
             const selectedLang = document.getElementById("languageSelect").value;
+            const config = languageConfig[selectedLang];
             const code = editor.getValue();
 
             outputDiv.classList.remove("error");
-            outputDiv.innerText = "Compiling & Executing...";
+            outputDiv.innerText = "Connecting to compiler server...";
             statusBadge.innerText = "Running";
             statusBadge.style.color = "#e0af68";
 
-            // Primary: Piston API with dynamic version
-            const activeVersion = pistonRuntimes[selectedLang];
-            if (activeVersion) {
-                try {
-                    const response = await fetch("https://emkc.org/api/v2/piston/execute", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            language: selectedLang,
-                            version: activeVersion,
-                            files: [{ content: code }]
-                        })
-                    });
-
-                    const result = await response.json();
-
-                    if (result.run) {
-                        if (result.run.stderr) {
-                            outputDiv.classList.add("error");
-                            outputDiv.innerText = result.run.stderr;
-                            statusBadge.innerText = "Runtime Error";
-                            statusBadge.style.color = "#f7768e";
-                        } else {
-                            outputDiv.innerText = result.run.output || "Program executed successfully (No Output).";
-                            statusBadge.innerText = "Success";
-                            statusBadge.style.color = "#9ece6a";
-                        }
-                        return;
-                    }
-                } catch (e) {
-                    console.warn("Piston failed, attempting Judge0 fallback...", e);
-                }
-            }
-
-            // Fallback: Judge0 CE Engine
             try {
-                const judge0Id = languageConfig[selectedLang].judge0Id;
-                const response = await fetch("https://judge0-ce.p.sulu.sh/submissions?wait=true", {
+                // Direct Piston API Call with hardcoded stable versions
+                const response = await fetch("https://emkc.org/api/v2/piston/execute", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        source_code: code,
-                        language_id: judge0Id
+                        language: selectedLang === 'c' ? 'c' : selectedLang === 'cpp' ? 'cpp' : selectedLang,
+                        version: config.version,
+                        files: [{ content: code }]
                     })
                 });
 
-                const data = await response.json();
-                const stdout = data.stdout || "";
-                const stderr = data.stderr || data.compile_output || "";
+                if (!response.ok) {
+                    throw new Error(`HTTP Error! Status: ${response.status} ${response.statusText}`);
+                }
 
-                if (stderr) {
+                const result = await response.json();
+
+                if (result.run) {
+                    if (result.run.stderr) {
+                        outputDiv.classList.add("error");
+                        outputDiv.innerText = result.run.stderr;
+                        statusBadge.innerText = "Runtime Error";
+                        statusBadge.style.color = "#f7768e";
+                    } else {
+                        outputDiv.innerText = result.run.output || "Executed successfully (No Output).";
+                        statusBadge.innerText = "Success";
+                        statusBadge.style.color = "#9ece6a";
+                    }
+                } else {
                     outputDiv.classList.add("error");
-                    outputDiv.innerText = stderr;
+                    outputDiv.innerText = "Invalid response format from server:\n" + JSON.stringify(result, null, 2);
                     statusBadge.innerText = "Error";
                     statusBadge.style.color = "#f7768e";
-                } else {
-                    outputDiv.innerText = stdout || "Execution successful (No output).";
-                    statusBadge.innerText = "Success";
-                    statusBadge.style.color = "#9ece6a";
                 }
             } catch (err) {
                 outputDiv.classList.add("error");
-                outputDiv.innerText = "Execution Error: Unable to connect to compilers.\n" + err.message;
+                outputDiv.innerText = "Detailed Error Info:\n" + err.message + "\n\nNote: If this is a CORS error, GitHub Pages might need a browser extension or you can test it live after deployment on GitHub.";
                 statusBadge.innerText = "Failed";
                 statusBadge.style.color = "#f7768e";
             }
