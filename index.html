@@ -126,8 +126,8 @@
                 <option value="python">Python 3</option>
                 <option value="c">C (GCC)</option>
                 <option value="cpp">C++ (G++)</option>
-                <option value="java">Java 15</option>
-                <option value="php">PHP 8</option>
+                <option value="java">Java</option>
+                <option value="php">PHP</option>
             </select>
             <button class="run-btn" onclick="runCode()">▶ Run</button>
         </div>
@@ -153,21 +153,22 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/php/php.min.js"></script>
 
     <script>
-        // Default starter templates
+        // Starter code templates including the C test code
         const templates = {
             python: `print("Hello, World!")\nfor i in range(5):\n    print(f"Step {i+1}")`,
-            c: `#include <stdio.h>\n\nint main() {\n    printf("Hello from C!\\n");\n    return 0;\n}`,
+            c: `#include <stdio.h>\n\nint main() {\n    printf("=== C Compiler Test Successful! ===\\n");\n    int a = 15, b = 25;\n    printf("Math Test -> %d + %d = %d\\n", a, b, a + b);\n    for (int i = 1; i <= 5; i++) {\n        printf("Count: %d\\n", i);\n    }\n    return 0;\n}`,
             cpp: `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello from C++!" << endl;\n    return 0;\n}`,
             java: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java!");\n    }\n}`,
             php: `<?php\necho "Hello from PHP!\\n";\n$val = 10 * 5;\necho "Result: " . $val;\n?>`
         };
 
+        // Using "*" wildcard for version so it automatically picks the working version from the server
         const languageMap = {
-            python: { lang: "python", ver: "3.10.0", mode: "python" },
-            c: { lang: "c", ver: "10.2.0", mode: "text/x-csrc" },
-            cpp: { lang: "cpp", ver: "10.2.0", mode: "text/x-c++src" },
-            java: { lang: "java", ver: "15.0.2", mode: "text/x-java" },
-            php: { lang: "php", ver: "8.2.3", mode: "php" }
+            python: { lang: "python", ver: "*", mode: "python" },
+            c: { lang: "c", ver: "*", mode: "text/x-csrc" },
+            cpp: { lang: "cpp", ver: "*", mode: "text/x-c++src" },
+            java: { lang: "java", ver: "*", mode: "text/x-java" },
+            php: { lang: "php", ver: "*", mode: "php" }
         };
 
         // Initialize CodeMirror Editor
@@ -179,7 +180,7 @@
 
         editor.setValue(templates.python);
 
-        // Switch modes and templates on change
+        // Switch modes and templates on language change
         document.getElementById("languageSelect").addEventListener("change", function() {
             const lang = this.value;
             editor.setOption("mode", languageMap[lang].mode);
@@ -199,7 +200,6 @@
             statusBadge.innerText = "Running";
             statusBadge.style.color = "#e0af68";
 
-            // Open Public API Endpoint (No Authentication Needed)
             const API_ENDPOINT = "https://emkc.org/api/v2/piston/execute";
 
             try {
