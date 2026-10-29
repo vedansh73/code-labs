@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unlimited Multi-Language Code Compiler</title>
+    <title>Multi-Language Online Compiler</title>
     <!-- CodeMirror Editor Styling -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/dracula.min.css">
@@ -129,7 +129,7 @@
                 <option value="java">Java</option>
                 <option value="php">PHP</option>
             </select>
-            <button class="run-btn" onclick="runCode()">▶ Run</button>
+            <button class="run-btn" onclick="runCode()">▶ Run Code</button>
         </div>
     </header>
 
@@ -142,7 +142,7 @@
                 <span>TERMINAL OUTPUT</span>
                 <span class="status-badge" id="statusBadge">Ready</span>
             </div>
-            <div id="output">Click 'Run' to execute code...</div>
+            <div id="output">Click 'Run Code' to execute your program...</div>
         </div>
     </div>
 
@@ -153,7 +153,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/php/php.min.js"></script>
 
     <script>
-        // Starter code templates including the C test code
         const templates = {
             python: `print("Hello, World!")\nfor i in range(5):\n    print(f"Step {i+1}")`,
             c: `#include <stdio.h>\n\nint main() {\n    printf("=== C Compiler Test Successful! ===\\n");\n    int a = 15, b = 25;\n    printf("Math Test -> %d + %d = %d\\n", a, b, a + b);\n    for (int i = 1; i <= 5; i++) {\n        printf("Count: %d\\n", i);\n    }\n    return 0;\n}`,
@@ -162,14 +161,15 @@
             php: `<?php\necho "Hello from PHP!\\n";\n$val = 10 * 5;\necho "Result: " . $val;\n?>`
         };
 
-        // Using "*" wildcard for version so it automatically picks the working version from the server
-        const languageMap = {
-            python: { lang: "python", ver: "*", mode: "python" },
-            c: { lang: "c", ver: "*", mode: "text/x-csrc" },
-            cpp: { lang: "cpp", ver: "*", mode: "text/x-c++src" },
-            java: { lang: "java", ver: "*", mode: "text/x-java" },
-            php: { lang: "php", ver: "*", mode: "php" }
+        const languageConfig = {
+            python: { mode: "python", judge0Id: 71 },
+            c: { mode: "text/x-csrc", judge0Id: 50 },
+            cpp: { mode: "text/x-c++src", judge0Id: 54 },
+            java: { mode: "text/x-java", judge0Id: 62 },
+            php: { mode: "php", judge0Id: 68 }
         };
+
+        let pistonRuntimes = {};
 
         // Initialize CodeMirror Editor
         const editor = CodeMirror.fromTextArea(document.getElementById("codeEditor"), {
@@ -180,62 +180,106 @@
 
         editor.setValue(templates.python);
 
-        // Switch modes and templates on language change
+        // Fetch valid Piston versions dynamically on startup
+        async function fetchRuntimes() {
+            try {
+                const res = await fetch("https://emkc.org/api/v2/piston/runtimes");
+                const data = await res.json();
+                data.forEach(item => {
+                    pistonRuntimes[item.language] = item.version;
+                    if (item.aliases) {
+                        item.aliases.forEach(alias => {
+                            pistonRuntimes[alias] = item.version;
+                        });
+                    }
+                });
+            } catch (err) {
+                console.warn("Piston runtime fetch failed, fallback ready.", err);
+            }
+        }
+        fetchRuntimes();
+
         document.getElementById("languageSelect").addEventListener("change", function() {
             const lang = this.value;
-            editor.setOption("mode", languageMap[lang].mode);
+            editor.setOption("mode", languageConfig[lang].mode);
             editor.setValue(templates[lang]);
         });
 
-        // Run Code Execution Engine
         async function runCode() {
             const outputDiv = document.getElementById("output");
             const statusBadge = document.getElementById("statusBadge");
             const selectedLang = document.getElementById("languageSelect").value;
-            const config = languageMap[selectedLang];
             const code = editor.getValue();
 
             outputDiv.classList.remove("error");
-            outputDiv.innerText = "Compiling & Running...";
+            outputDiv.innerText = "Compiling & Executing...";
             statusBadge.innerText = "Running";
             statusBadge.style.color = "#e0af68";
 
-            const API_ENDPOINT = "https://emkc.org/api/v2/piston/execute";
+            // Primary: Piston API with dynamic version
+            const activeVersion = pistonRuntimes[selectedLang];
+            if (activeVersion) {
+                try {
+                    const response = await fetch("https://emkc.org/api/v2/piston/execute", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            language: selectedLang,
+                            version: activeVersion,
+                            files: [{ content: code }]
+                        })
+                    });
 
+                    const result = await response.json();
+
+                    if (result.run) {
+                        if (result.run.stderr) {
+                            outputDiv.classList.add("error");
+                            outputDiv.innerText = result.run.stderr;
+                            statusBadge.innerText = "Runtime Error";
+                            statusBadge.style.color = "#f7768e";
+                        } else {
+                            outputDiv.innerText = result.run.output || "Program executed successfully (No Output).";
+                            statusBadge.innerText = "Success";
+                            statusBadge.style.color = "#9ece6a";
+                        }
+                        return;
+                    }
+                } catch (e) {
+                    console.warn("Piston failed, attempting Judge0 fallback...", e);
+                }
+            }
+
+            // Fallback: Judge0 CE Engine
             try {
-                const response = await fetch(API_ENDPOINT, {
+                const judge0Id = languageConfig[selectedLang].judge0Id;
+                const response = await fetch("https://judge0-ce.p.sulu.sh/submissions?wait=true", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        language: config.lang,
-                        version: config.ver,
-                        files: [{ content: code }]
+                        source_code: code,
+                        language_id: judge0Id
                     })
                 });
 
-                const result = await response.json();
+                const data = await response.json();
+                const stdout = data.stdout || "";
+                const stderr = data.stderr || data.compile_output || "";
 
-                if (result.run) {
-                    if (result.run.stderr) {
-                        outputDiv.classList.add("error");
-                        outputDiv.innerText = result.run.stderr;
-                        statusBadge.innerText = "Error";
-                        statusBadge.style.color = "#f7768e";
-                    } else {
-                        outputDiv.innerText = result.run.output || "Code executed successfully (No Output).";
-                        statusBadge.innerText = "Success";
-                        statusBadge.style.color = "#9ece6a";
-                    }
-                } else {
+                if (stderr) {
                     outputDiv.classList.add("error");
-                    outputDiv.innerText = "Execution failed.";
-                    statusBadge.innerText = "Failed";
+                    outputDiv.innerText = stderr;
+                    statusBadge.innerText = "Error";
                     statusBadge.style.color = "#f7768e";
+                } else {
+                    outputDiv.innerText = stdout || "Execution successful (No output).";
+                    statusBadge.innerText = "Success";
+                    statusBadge.style.color = "#9ece6a";
                 }
             } catch (err) {
                 outputDiv.classList.add("error");
-                outputDiv.innerText = "Network Error: Unable to reach compiler server.\n" + err.message;
-                statusBadge.innerText = "Network Error";
+                outputDiv.innerText = "Execution Error: Unable to connect to compilers.\n" + err.message;
+                statusBadge.innerText = "Failed";
                 statusBadge.style.color = "#f7768e";
             }
         }
