@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unlimited Multi-Language Code Compiler</title>
+    <!-- CodeMirror Editor Styling -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/dracula.min.css">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Fira Code', 'Segoe UI', monospace;
+        }
+        body {
+            background-color: #0f111a;
+            color: #a9b1d6;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        header {
+            background-color: #1a1b26;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #24283b;
+        }
+        .logo {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #7aa2f7;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        select, button {
+            background-color: #24283b;
+            color: #c0caf5;
+            border: 1px solid #414868;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+        select:hover, button:hover {
+            border-color: #7aa2f7;
+        }
+        button.run-btn {
+            background-color: #9ece6a;
+            color: #1a1b26;
+            font-weight: bold;
+            border: none;
+        }
+        button.run-btn:hover {
+            background-color: #73daca;
+            transform: translateY(-1px);
+        }
+        .main-container {
+            display: flex;
+            flex: 1;
+            height: calc(100vh - 60px);
+        }
+        .editor-container {
+            flex: 1;
+            border-right: 2px solid #24283b;
+            display: flex;
+            flex-direction: column;
+        }
+        .CodeMirror {
+            height: 100% !important;
+            font-size: 14px;
+        }
+        .output-container {
+            flex: 1;
+            background-color: #16161e;
+            display: flex;
+            flex-direction: column;
+        }
+        .output-header {
+            background-color: #1a1b26;
+            padding: 10px 16px;
+            font-size: 0.85rem;
+            color: #565f89;
+            border-bottom: 2px solid #24283b;
+            display: flex;
+            justify-content: space-between;
+        }
+        #output {
+            padding: 20px;
+            font-family: 'Courier New', Courier, monospace;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            flex: 1;
+            color: #7ce38b;
+        }
+        .error {
+            color: #f7768e !important;
+        }
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background-color: #24283b;
+            color: #7aa2f7;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">⚡ Code Runner Pro</div>
+        <div class="controls">
+            <select id="languageSelect">
+                <option value="python">Python 3</option>
+                <option value="c">C (GCC)</option>
+                <option value="cpp">C++ (G++)</option>
+                <option value="java">Java 15</option>
+                <option value="php">PHP 8</option>
+            </select>
+            <button class="run-btn" onclick="runCode()">▶ Run</button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="editor-container">
+            <textarea id="codeEditor"></textarea>
+        </div>
+        <div class="output-container">
+            <div class="output-header">
+                <span>TERMINAL OUTPUT</span>
+                <span class="status-badge" id="statusBadge">Ready</span>
+            </div>
+            <div id="output">Click 'Run' to execute code...</div>
+        </div>
+    </div>
+
+    <!-- CodeMirror JS Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/php/php.min.js"></script>
+
+    <script>
+        // Default starter templates
+        const templates = {
+            python: `print("Hello, World!")\nfor i in range(5):\n    print(f"Step {i+1}")`,
+            c: `#include <stdio.h>\n\nint main() {\n    printf("Hello from C!\\n");\n    return 0;\n}`,
+            cpp: `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello from C++!" << endl;\n    return 0;\n}`,
+            java: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java!");\n    }\n}`,
+            php: `<?php\necho "Hello from PHP!\\n";\n$val = 10 * 5;\necho "Result: " . $val;\n?>`
+        };
+
+        const languageMap = {
+            python: { lang: "python", ver: "3.10.0", mode: "python" },
+            c: { lang: "c", ver: "10.2.0", mode: "text/x-csrc" },
+            cpp: { lang: "cpp", ver: "10.2.0", mode: "text/x-c++src" },
+            java: { lang: "java", ver: "15.0.2", mode: "text/x-java" },
+            php: { lang: "php", ver: "8.2.3", mode: "php" }
+        };
+
+        // Initialize CodeMirror Editor
+        const editor = CodeMirror.fromTextArea(document.getElementById("codeEditor"), {
+            lineNumbers: true,
+            theme: "dracula",
+            mode: "python"
+        });
+
+        editor.setValue(templates.python);
+
+        // Switch modes and templates on change
+        document.getElementById("languageSelect").addEventListener("change", function() {
+            const lang = this.value;
+            editor.setOption("mode", languageMap[lang].mode);
+            editor.setValue(templates[lang]);
+        });
+
+        // Run Code Execution Engine
+        async function runCode() {
+            const outputDiv = document.getElementById("output");
+            const statusBadge = document.getElementById("statusBadge");
+            const selectedLang = document.getElementById("languageSelect").value;
+            const config = languageMap[selectedLang];
+            const code = editor.getValue();
+
+            outputDiv.classList.remove("error");
+            outputDiv.innerText = "Compiling & Running...";
+            statusBadge.innerText = "Running";
+            statusBadge.style.color = "#e0af68";
+
+            // Open Public API Endpoint (No Authentication Needed)
+            const API_ENDPOINT = "https://emkc.org/api/v2/piston/execute";
+
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        language: config.lang,
+                        version: config.ver,
+                        files: [{ content: code }]
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.run) {
+                    if (result.run.stderr) {
+                        outputDiv.classList.add("error");
+                        outputDiv.innerText = result.run.stderr;
+                        statusBadge.innerText = "Error";
+                        statusBadge.style.color = "#f7768e";
+                    } else {
+                        outputDiv.innerText = result.run.output || "Code executed successfully (No Output).";
+                        statusBadge.innerText = "Success";
+                        statusBadge.style.color = "#9ece6a";
+                    }
+                } else {
+                    outputDiv.classList.add("error");
+                    outputDiv.innerText = "Execution failed.";
+                    statusBadge.innerText = "Failed";
+                    statusBadge.style.color = "#f7768e";
+                }
+            } catch (err) {
+                outputDiv.classList.add("error");
+                outputDiv.innerText = "Network Error: Unable to reach compiler server.\n" + err.message;
+                statusBadge.innerText = "Network Error";
+                statusBadge.style.color = "#f7768e";
+            }
+        }
+    </script>
+</body>
+</html>
